@@ -146,29 +146,40 @@ A failed upload stores nothing.
 
 ## Architecture
 
-### Structure
+### API diagram
 
-```
-app/
-  main.py          creates the app
-  routes/          the endpoints, one per file
-  uploads/         extension check, size-limited save
-  readers/         zip extraction, shapefile and KML reading
-  crs/             CRS label, warnings, UTM zone choice, projection
-  measurement/     status, area, perimeter, length, totals
-  processing/      turns a saved file into a stored record
-  storage/         save and load records, make ids
-  schemas/         response and record models, one per file
-  errors/          error types and the handler
-  settings/        limits and defaults
-tests/
-  unit/            one small piece at a time
-  api/             through the real endpoints
-  builders/        make KML text and shapefile zips for tests
-```
+```mermaid
+flowchart LR
+    client([Client])
 
-Each file has one job and each class sits alone in its file. Routes only call into
-`processing` and `storage`, and everything below can be tested on its own.
+    subgraph api[FastAPI]
+        upload["POST /api/files/"]
+        info["GET /api/files/{id}/"]
+        measurements["GET /api/files/{id}/measurements/"]
+    end
+
+    subgraph processing[Processing]
+        validate[Validate extension and size]
+        read[Read KML or Shapefile zip]
+        crs[Detect CRS and convert to WGS84]
+        project[Project each feature to its UTM zone]
+        measure[Measure area, perimeter, length]
+    end
+
+    store[(storage/id.json)]
+
+    client -->|kml or zip| upload
+    upload --> validate --> read --> crs --> project --> measure
+    measure -->|save record| store
+    upload -->|201 file info| client
+
+    client -->|id| info
+    client -->|id| measurements
+    info -->|load record| store
+    measurements -->|load record| store
+    info -->|file info| client
+    measurements -->|features and totals| client
+```
 
 ### File-processing flow
 
